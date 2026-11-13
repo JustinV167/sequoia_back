@@ -14,16 +14,10 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api')
   app.use(cookieParser())
-  app.useStaticAssets(getUploadsDir(config), { prefix: '/uploads/' })
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: false,
-      transform: true,
-      exceptionFactory: validationExceptionFactory,
-    }),
-  )
 
+  // CORS must be registered before the static assets: otherwise `/uploads/*`
+  // responses are sent without `Access-Control-Allow-Origin` and the browser
+  // taints any canvas that draws them (used by the colour picker).
   const corsOrigins = config.get<string>('CORS_ORIGINS')
 
   if (!corsOrigins && config.get<string>('NODE_ENV') === 'production') {
@@ -39,6 +33,16 @@ async function bootstrap() {
       : true,
     credentials: true,
   })
+
+  app.useStaticAssets(getUploadsDir(config), { prefix: '/uploads/' })
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: false,
+      transform: true,
+      exceptionFactory: validationExceptionFactory,
+    }),
+  )
 
   if (config.get<string>('TRUST_PROXY', 'false') === 'true') {
     app.getHttpAdapter().getInstance().set('trust proxy', 1)
