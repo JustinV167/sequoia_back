@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   HttpCode,
   HttpStatus,
@@ -7,11 +8,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
 import { FileInterceptor } from '@nestjs/platform-express'
-import { randomUUID } from 'node:crypto'
-import { mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
 
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { ErrorCodes } from '../common/constants/error-codes'
@@ -19,9 +16,14 @@ import { AppException } from '../common/exceptions/app.exception'
 import { SessionAuthGuard } from '../auth/guards/session-auth.guard'
 import type { PublicUser } from '../users/types/public-user.interface'
 import { assertTeacher } from '../courses/utils/role-guards'
-import { getUploadsDir } from './uploads.config'
+import { StorageService } from '../storage/storage.service'
+import { ImageCompressionService } from './image-compression.service'
+import { VIDEO_EXTENSIONS } from './uploads.constants'
+import type { UploadedFilePayload } from './uploads.types'
+import { VideoCompressionService } from './video-compression.service'
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+const MAX_VIDEO_BYTES = 200 * 1024 * 1024
 
 const IMAGE_EXTENSIONS: Record<string, string> = {
   'image/png': 'png',
@@ -30,17 +32,14 @@ const IMAGE_EXTENSIONS: Record<string, string> = {
   'image/gif': 'gif',
 }
 
-type UploadedImage = {
-  buffer: Buffer
-  mimetype: string
-  originalname: string
-  size: number
-}
-
 @Controller('uploads')
 @UseGuards(SessionAuthGuard)
 export class UploadsController {
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly imageCompression: ImageCompressionService,
+    private readonly videoCompression: VideoCompressionService,
+    private readonly storage: StorageService,
+  ) {}
 
   @Post('image')
   @HttpCode(HttpStatus.CREATED)
@@ -49,7 +48,8 @@ export class UploadsController {
   )
   async uploadImage(
     @CurrentUser() user: PublicUser,
-    @UploadedFile() file?: UploadedImage,
+    @Body('courseId') courseId: string | undefined,
+    @UploadedFile() file?: UploadedFilePayload,
   ): Promise<{ url: string }> {
     assertTeacher(user)
 
@@ -79,12 +79,69 @@ export class UploadsController {
       )
     }
 
-    const uploadsDir = getUploadsDir(this.config)
-    const filename = `${randomUUID()}.${extension}`
+    const compression = await this.imageCompression.compress(file)
+    const outputExtension =
+      IMAGE_EXTENSIONS[compression.mimetype] ?? extension
+    const url = await this.storage.save({
+      buffer: compression.buffer,
+      courseId: courseId ?? '',
+      kind: 'images',
+      extension: outputExtension,
+      contentType: compression.mimetype,
+    })
 
-    await mkdir(uploadsDir, { recursive: true })
-    await writeFile(join(uploadsDir, filename), file.buffer)
+    return { url }
+  }
 
-    return { url: `/uploads/${filename}` }
+  @Post('video')
+  @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: MAX_VIDEO_BYTES } }),
+  )
+  async uploadVideo(
+    @CurrentUser() user: PublicUser,
+    @Body('courseId') courseId: string | undefined,
+    @UploadedFile() file?: UploadedFilePayload,
+  ): Promise<{ url: string }> {
+    assertTeacher(user)
+
+    if (!file) {
+      throw new AppException(
+        400,
+        ErrorCodes.InvalidRequest,
+        'Select a video to upload.',
+      )
+    }
+
+    const extension = VIDEO_EXTENSIONS[file.mimetype]
+
+    if (!extension) {
+      throw new AppException(
+        400,
+        ErrorCodes.InvalidRequest,
+        'Upload an MP4, WebM, OGG or MOV video.',
+      )
+    }
+
+    if (file.size === 0) {
+      throw new AppException(
+        400,
+        ErrorCodes.InvalidRequest,
+        'The video is empty.',
+      )
+    }
+
+    const compression = await this.videoCompression.compress(file)
+    const outputExtension =
+      VIDEO_EXTENSIONS[compression.mimetype] ?? extension
+    const url = await this.storage.save({
+      buffer: compression.buffer,
+      courseId: courseId ?? '',
+      kind: 'videos',
+      extension: outputExtension,
+      contentType: compression.mimetype,
+    })
+
+    return { url }
   }
 }

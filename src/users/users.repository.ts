@@ -4,6 +4,7 @@ import { EntityManager, QueryFailedError, Repository } from 'typeorm'
 
 import { User } from './user.entity'
 import { EmailAlreadyExistsError } from './errors/email-already-exists.error'
+import type { UserRole } from './enums/user-role.enum'
 
 export type CreateUserData = Pick<
   User,
@@ -24,6 +25,10 @@ export class UsersRepository {
   async existsByEmail(email: string): Promise<boolean> {
     const count = await this.users.count({ where: { email } })
     return count > 0
+  }
+
+  async findByEmail(email: string): Promise<User | null> {
+    return this.users.findOne({ where: { email } })
   }
 
   async findByEmailWithPassword(email: string): Promise<User | null> {
@@ -61,5 +66,9 @@ export class UsersRepository {
 
   async updatePassword(userId: string, passwordHash: string): Promise<void> {
     await this.users.update({ id: userId }, { passwordHash })
+  }
+
+  async updateRoles(userId: string, roles: UserRole[]): Promise<void> {
+    await this.users.update({ id: userId }, { roles })
   }
 }

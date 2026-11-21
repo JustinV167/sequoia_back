@@ -4,6 +4,7 @@ import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core'
 
+import { AssessmentsModule } from './assessments/assessments.module'
 import { AuthModule } from './auth/auth.module'
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter'
 import { ResponseInterceptor } from './common/interceptors/response.interceptor'
@@ -27,6 +28,7 @@ import { UploadsModule } from './uploads/uploads.module'
     AuthModule,
     CoursesModule,
     EnrollmentsModule,
+    AssessmentsModule,
     UploadsModule,
   ],
   providers: [

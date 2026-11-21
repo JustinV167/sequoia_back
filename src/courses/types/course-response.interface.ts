@@ -12,6 +12,7 @@ export interface CourseTeacherResponse {
 
 export interface CourseResponse {
   id: string
+  templateId: string | null
   title: string
   subject: string
   description: string

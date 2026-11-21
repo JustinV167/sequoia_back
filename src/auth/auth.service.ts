@@ -65,6 +65,10 @@ export interface SendOtpResult {
 export interface VerifyOtpResult {
   registrationToken: string
   expiresIn: number
+  /** True when the email already belongs to an account. */
+  accountExists: boolean
+  /** Roles already assigned to that account (empty for new emails). */
+  roles: UserRole[]
 }
 
 export interface ResetOtpResult {
@@ -115,14 +119,6 @@ export class AuthService {
       OTP_SEND_EMAIL_LIMIT,
       OTP_SEND_EMAIL_WINDOW_MS,
     )
-
-    if (await this.users.existsByEmail(email)) {
-      throw new AppException(
-        409,
-        ErrorCodes.EmailExist,
-        'This email is already registered.',
-      )
-    }
 
     const now = new Date()
     const latestCode = await this.verificationCodes.findLatestByEmailAndPurpose(
@@ -272,9 +268,13 @@ export class AuthService {
       purpose: VerificationPurpose.Register,
     } satisfies RegistrationTokenPayload)
 
+    const user = await this.users.findByEmail(email)
+
     return {
       registrationToken,
       expiresIn: REGISTRATION_TOKEN_TTL_SECONDS,
+      accountExists: Boolean(user),
+      roles: user?.roles ?? [],
     }
   }
 
@@ -333,7 +333,9 @@ export class AuthService {
       )
     }
 
-    const passwordHash = await this.passwords.hash(dto.password)
+    const passwordHash = dto.password
+      ? await this.passwords.hash(dto.password)
+      : null
     let user: User
 
     try {
@@ -369,11 +371,43 @@ export class AuthService {
             )
           }
 
-          if (await users.existsByEmail(email)) {
+          const existingUser = await users.findByEmail(email)
+
+          if (existingUser) {
+            if (existingUser.status !== UserStatus.Active) {
+              throw new AppException(
+                403,
+                existingUser.status === UserStatus.Suspended
+                  ? ErrorCodes.AccountSuspended
+                  : ErrorCodes.Forbidden,
+                'This account is not active.',
+              )
+            }
+
+            if (existingUser.roles.includes(dto.role)) {
+              throw new AppException(
+                409,
+                ErrorCodes.EmailExist,
+                'This email is already registered.',
+              )
+            }
+
+            const roles = [...existingUser.roles, dto.role]
+
+            await users.updateRoles(existingUser.id, roles)
+
+            await verificationCodes.markConsumed(code.id, new Date())
+
+            existingUser.roles = roles
+
+            return existingUser
+          }
+
+          if (!passwordHash) {
             throw new AppException(
-              409,
-              ErrorCodes.EmailExist,
-              'This email is already registered.',
+              400,
+              ErrorCodes.WeakPassword,
+              'Enter a password to create the account.',
             )
           }
 

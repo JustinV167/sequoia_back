@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { QueryFailedError, Repository } from 'typeorm'
+import { In, QueryFailedError, Repository } from 'typeorm'
 
 import { Enrollment } from './enrollment.entity'
 import { EnrollmentStatus } from './enums/enrollment-status.enum'
@@ -51,6 +51,19 @@ export class EnrollmentRepository {
     return this.enrollments.findOne({
       where: { courseId, studentId },
     })
+  }
+
+  async existsByCourseIdsAndStudent(
+    courseIds: string[],
+    studentId: string,
+  ): Promise<boolean> {
+    if (courseIds.length === 0) return false
+
+    const count = await this.enrollments.count({
+      where: { courseId: In(courseIds), studentId },
+    })
+
+    return count > 0
   }
 
   async findByStudentId(studentId: string): Promise<Enrollment[]> {

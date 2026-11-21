@@ -7,15 +7,19 @@ import type {
 } from '../types/course-content.types'
 
 /**
- * MongoDB document that owns the editable course structure. The PostgreSQL
- * course row only keeps the metadata and the relationship with its teacher.
+ * MongoDB document that owns the editable structure of a course template.
+ * The PostgreSQL template row keeps the metadata; publications resolve their
+ * content from this document so a single edit reaches every publication.
+ *
+ * The physical field is still called `courseId` to keep documents created
+ * before the template/publication split compatible. It stores the template id.
  */
 @Schema({
   collection: 'course_templates',
   timestamps: true,
   versionKey: false,
 })
-export class CourseTemplate {
+export class CourseContent {
   @Prop({ required: true, unique: true, index: true })
   courseId!: string
 
@@ -26,6 +30,6 @@ export class CourseTemplate {
   modules!: CourseModuleContent[] | null
 }
 
-export type CourseTemplateDocument = HydratedDocument<CourseTemplate>
+export type CourseContentDocument = HydratedDocument<CourseContent>
 
-export const CourseTemplateSchema = SchemaFactory.createForClass(CourseTemplate)
+export const CourseContentSchema = SchemaFactory.createForClass(CourseContent)

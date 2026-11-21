@@ -5,15 +5,27 @@ import { Repository } from 'typeorm'
 import { Course } from './course.entity'
 import { CourseStatus } from './enums/course-status.enum'
 
-export type CreateCourseData = Pick<
+export type CreateCoursePublicationData = Pick<
   Course,
   | 'teacherId'
+  | 'templateId'
   | 'title'
   | 'subject'
   | 'description'
   | 'level'
   | 'durationMinutes'
   | 'coverUrl'
+> & {
+  status?: CourseStatus
+  publishedAt?: Date | null
+  titleOverridden?: boolean
+}
+
+export type UpdateCourseMetadataData = Partial<
+  Pick<
+    Course,
+    'subject' | 'description' | 'level' | 'durationMinutes' | 'coverUrl'
+  >
 >
 
 @Injectable()
@@ -23,10 +35,13 @@ export class CourseRepository {
     private readonly courses: Repository<Course>,
   ) {}
 
-  async create(data: CreateCourseData): Promise<Course> {
+  async createPublication(
+    data: CreateCoursePublicationData,
+  ): Promise<Course> {
     const course = this.courses.create({
       ...data,
-      status: CourseStatus.Draft,
+      status: data.status ?? CourseStatus.Published,
+      publishedAt: data.publishedAt ?? new Date(),
     })
 
     return this.courses.save(course)
@@ -47,7 +62,7 @@ export class CourseRepository {
     return this.courses.find({
       where: { status: CourseStatus.Published },
       relations: { teacher: true },
-      order: { createdAt: 'DESC' },
+      order: { publishedAt: 'DESC' },
     })
   }
 
@@ -57,6 +72,39 @@ export class CourseRepository {
       relations: { teacher: true },
       order: { createdAt: 'DESC' },
     })
+  }
+
+  async findByTemplateIds(templateIds: string[]): Promise<Course[]> {
+    if (templateIds.length === 0) {
+      return []
+    }
+
+    return this.courses.find({
+      where: templateIds.map((templateId) => ({ templateId })),
+      relations: { teacher: true },
+      order: { publishedAt: 'DESC' },
+    })
+  }
+
+  async updateMetadataByTemplateId(
+    templateId: string,
+    data: UpdateCourseMetadataData,
+  ): Promise<void> {
+    await this.courses.update({ templateId }, data)
+  }
+
+  /**
+   * Template title edits only reach publications that never had a custom
+   * title. Publications published as "Mate secc 2" keep their own title.
+   */
+  async updateDefaultTitleByTemplateId(
+    templateId: string,
+    title: string,
+  ): Promise<void> {
+    await this.courses.update(
+      { templateId, titleOverridden: false },
+      { title },
+    )
   }
 
   async publish(id: string, publishedAt: Date): Promise<void> {
@@ -75,5 +123,9 @@ export class CourseRepository {
 
   async deleteById(id: string): Promise<void> {
     await this.courses.delete({ id })
+  }
+
+  async deleteByTemplateId(templateId: string): Promise<void> {
+    await this.courses.delete({ templateId })
   }
 }

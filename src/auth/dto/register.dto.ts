@@ -3,6 +3,7 @@ import {
   IsEmail,
   IsEnum,
   IsNotEmpty,
+  IsOptional,
   IsString,
   MaxLength,
   MinLength,
@@ -32,8 +33,9 @@ export class RegisterDto {
   @MaxLength(255, { message: 'Email is too long.' })
   email!: string
 
+  @IsOptional()
   @IsString({ message: 'Enter a password.' })
   @MinLength(8, { message: 'Password must be at least 8 characters long.' })
   @MaxLength(128, { message: 'Password is too long.' })
-  password!: string
+  password?: string
 }
