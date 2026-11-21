@@ -11,5 +11,6 @@ import { PreparedExerciseCache } from './prepared-exercise.cache'
   imports: [AuthModule, CoursesModule, CourseContentModule],
   controllers: [AssessmentsController],
   providers: [AssessmentsService, PreparedExerciseCache],
+  exports: [AssessmentsService, PreparedExerciseCache],
 })
 export class AssessmentsModule {}

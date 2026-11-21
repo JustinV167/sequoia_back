@@ -11,6 +11,7 @@ import { CourseActivity } from '../activity/entities/course-activity.entity'
 import { ExerciseActivity } from '../activity/entities/exercise-activity.entity'
 import { LessonActivity } from '../activity/entities/lesson-activity.entity'
 import { ModuleActivity } from '../activity/entities/module-activity.entity'
+import { QuizAttempt } from '../quiz/quiz-attempt.entity'
 import { Course } from '../courses/course.entity'
 import { CourseTemplate } from '../courses/course-template.entity'
 import { Enrollment } from '../courses/enrollments/enrollment.entity'
@@ -44,6 +45,7 @@ const AppDataSource = new DataSource({
     ModuleActivity,
     LessonActivity,
     ExerciseActivity,
+    QuizAttempt,
   ],
   migrations: [join(__dirname, 'migrations/*{.ts,.js}')],
   migrationsTableName: 'typeorm_migrations',

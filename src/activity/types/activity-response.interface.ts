@@ -109,6 +109,7 @@ export interface MyCourseActivityResponse {
   exercises: ExerciseActivityResponse[]
   recentEvents: ActivityEventResponse[]
   timeline: ActivityDayResponse[]
+  quizAttempts: QuizAttemptSummaryResponse[]
 }
 
 export interface StudentActivityDetailResponse
@@ -138,6 +139,10 @@ export interface CourseStudentActivityResponse {
   progressPercent: number
   completedAt: Date | null
   eventsCount: number
+  quizzesAttempted: number
+  quizzesPassed: number
+  averageQuizScore: number
+  bestQuizScore: number | null
 }
 
 export interface CourseActivitySummaryResponse {
@@ -152,6 +157,9 @@ export interface CourseActivitySummaryResponse {
   exercisesCorrect: number
   studentsCompleted: number
   lastActivityAt: Date | null
+  quizzesAttempted: number
+  quizzesPassed: number
+  averageQuizScore: number
 }
 
 export interface ModuleBreakdownItem {
@@ -198,4 +206,32 @@ export interface CourseActivityBreakdownResponse {
   modules: ModuleBreakdownItem[]
   lessons: LessonBreakdownItem[]
   exercises: ExerciseBreakdownItem[]
+  quizzes: QuizBreakdownItem[]
+}
+
+export interface QuizBreakdownItem {
+  lessonId: string
+  quizTitle: string | null
+  students: number
+  attempts: number
+  averageScore: number
+  passedAttempts: number
+  averageTimeSeconds: number
+}
+
+export interface QuizAttemptSummaryResponse {
+  id: string
+  lessonId: string
+  quizTitle: string | null
+  status: string
+  attemptNumber: number
+  questionCount: number
+  score: number | null
+  passed: boolean | null
+  startedAt: Date
+  submittedAt: Date | null
+  timeSpentSeconds: number
+  focusLostCount: number
+  tabHiddenSeconds: number
+  pasteCount: number
 }

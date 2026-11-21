@@ -82,6 +82,58 @@ progress, lesson time and exercise accuracy charts. The screen consumes
 `summary`, `students` and `breakdown` in a single request batch, and the
 detail uses `students/:studentId`.
 
+## Quizzes
+
+Quiz lessons carry an optional `quiz` object in the course content:
+
+```json
+{ "timeLimitMinutes": 10, "maxAttempts": 1, "passScore": 60 }
+```
+
+The simple editor exposes these three fields per quiz lesson.
+
+Before starting, the student sees the warning card: number of questions, time
+limit, score over 100, pass score, attempts left and previous best score. The
+server creates the attempt only when the student presses **Comenzar**, so the
+timer starts at that exact moment.
+
+`quiz_attempts` keeps the authoritative deadline, the latest autosaved answers,
+the final score and the soft anti-cheat counters. The client autosaves 1.2 s
+after each change and on `visibilitychange`/`pagehide`, so a power outage loses
+at most the last second of work. On return, the student resumes the same
+attempt with the remaining server time.
+
+Anti-cheat measures (non-blocking):
+
+- Server-side deadline and server-side grading.
+- Answers can only be saved while the attempt is active and before expiry.
+- One active attempt at a time and a configurable attempt limit.
+- Deterministic shuffling of questions and multiple-choice options per attempt.
+- Tab changes, hidden time and paste events are counted and saved.
+- Late submissions are graded with the answers already stored on the server.
+
+While an attempt is in progress the viewer locks navigation: the previous/next
+buttons and the exit button are hidden, lesson links and the mobile section
+selector are disabled, and Escape cannot close the course. The lock is released
+when the quiz is submitted or its time expires.
+
+Routes:
+
+| Method | Route | Access |
+| --- | --- | --- |
+| `GET` | `/api/quiz/courses/:courseId/lessons/:lessonId` | Enrolled student |
+| `GET` | `/api/quiz/courses/:courseId/lessons/:lessonId/stats` | Course owner (teacher) |
+| `POST` | `/api/quiz/courses/:courseId/lessons/:lessonId/start` | Enrolled student |
+| `GET` | `/api/quiz/attempts/:attemptId` | Attempt owner |
+| `PUT` | `/api/quiz/attempts/:attemptId` | Attempt owner (autosave) |
+| `POST` | `/api/quiz/attempts/:attemptId/submit` | Attempt owner |
+
+Quiz results feed the teacher statistics: course KPIs (attempts, passed, average
+score), the quizzes panel in the course breakdown and the quiz panel of every
+student detail chart. Clicking a quiz opens the quiz detail: configuration,
+summary, daily deliveries, accuracy per question, monitoring events and a table
+of results by student (`lessons/:lessonId/stats`).
+
 ## Extending
 
 To add a new interaction:

@@ -55,6 +55,8 @@ import type {
   ModuleActivityResponse,
   ModuleBreakdownItem,
   MyCourseActivityResponse,
+  QuizAttemptSummaryResponse,
+  QuizBreakdownItem,
   StudentActivityDetailResponse,
   TrackEventsResponse,
 } from './types/activity-response.interface'
@@ -268,30 +270,38 @@ export class ActivityService {
     userId: string,
     courseId: string,
   ): Promise<MyCourseActivityResponse> {
-    const [course, modules, lessons, exercises, recentEvents, timeline] =
-      await Promise.all([
-        this.courseActivity.findOne({
-          where: { userId, courseId },
-        }),
-        this.moduleActivity.find({
-          where: { userId, courseId },
-          order: { firstViewedAt: 'ASC' },
-        }),
-        this.lessonActivity.find({
-          where: { userId, courseId },
-          order: { firstViewedAt: 'ASC' },
-        }),
-        this.exerciseActivity.find({
-          where: { userId, courseId },
-          order: { lastAttemptedAt: 'DESC' },
-        }),
-        this.events.find({
-          where: { userId, courseId },
-          order: { occurredAt: 'DESC' },
-          take: 100,
-        }),
-        this.loadActivityTimeline(userId, courseId),
-      ])
+    const [
+      course,
+      modules,
+      lessons,
+      exercises,
+      recentEvents,
+      timeline,
+      quizAttempts,
+    ] = await Promise.all([
+      this.courseActivity.findOne({
+        where: { userId, courseId },
+      }),
+      this.moduleActivity.find({
+        where: { userId, courseId },
+        order: { firstViewedAt: 'ASC' },
+      }),
+      this.lessonActivity.find({
+        where: { userId, courseId },
+        order: { firstViewedAt: 'ASC' },
+      }),
+      this.exerciseActivity.find({
+        where: { userId, courseId },
+        order: { lastAttemptedAt: 'DESC' },
+      }),
+      this.events.find({
+        where: { userId, courseId },
+        order: { occurredAt: 'DESC' },
+        take: 100,
+      }),
+      this.loadActivityTimeline(userId, courseId),
+      this.loadUserQuizAttempts(userId, courseId),
+    ])
 
     return {
       courseId,
@@ -303,7 +313,49 @@ export class ActivityService {
       ),
       recentEvents: recentEvents.map((item) => this.toEventResponse(item)),
       timeline,
+      quizAttempts,
     }
+  }
+
+  /** Quiz history of one student, used by the detail charts. */
+  private async loadUserQuizAttempts(
+    userId: string,
+    courseId: string,
+  ): Promise<QuizAttemptSummaryResponse[]> {
+    const rows = await this.dataSource.query<QuizAttemptSummaryResponse[]>(
+      `
+        SELECT
+          id,
+          lesson_id AS "lessonId",
+          quiz_title AS "quizTitle",
+          status,
+          attempt_number AS "attemptNumber",
+          question_count AS "questionCount",
+          score,
+          passed,
+          started_at AS "startedAt",
+          submitted_at AS "submittedAt",
+          time_spent_seconds AS "timeSpentSeconds",
+          focus_lost_count AS "focusLostCount",
+          tab_hidden_seconds AS "tabHiddenSeconds",
+          paste_count AS "pasteCount"
+        FROM "quiz_attempts"
+        WHERE student_id = $1 AND course_id = $2
+        ORDER BY started_at DESC
+      `,
+      [userId, courseId],
+    )
+
+    return rows.map((row) => ({
+      ...row,
+      attemptNumber: Number(row.attemptNumber),
+      questionCount: Number(row.questionCount),
+      score: toNumber(row.score),
+      timeSpentSeconds: Number(row.timeSpentSeconds),
+      focusLostCount: Number(row.focusLostCount),
+      tabHiddenSeconds: Number(row.tabHiddenSeconds),
+      pasteCount: Number(row.pasteCount),
+    }))
   }
 
   /** Daily series used by the student charts. */
@@ -373,6 +425,10 @@ export class ActivityService {
         progressPercent: number
         completedAt: Date | null
         eventsCount: number
+        quizzesAttempted: number
+        quizzesPassed: number
+        averageQuizScore: number
+        bestQuizScore: number | null
       }[]
     >(
       `
@@ -393,7 +449,33 @@ export class ActivityService {
           COALESCE(activity.exercises_correct, 0) AS "exercisesCorrect",
           COALESCE(activity.progress_percent, 0) AS "progressPercent",
           activity.completed_at AS "completedAt",
-          COALESCE(events.events_count, 0) AS "eventsCount"
+          COALESCE(events.events_count, 0) AS "eventsCount",
+          (
+            SELECT COUNT(*) FROM "quiz_attempts" AS quiz
+            WHERE quiz.course_id = enrollment.course_id
+              AND quiz.student_id = enrollment.student_id
+              AND quiz.status IN ('submitted', 'expired')
+          )::int AS "quizzesAttempted",
+          (
+            SELECT COUNT(*) FROM "quiz_attempts" AS quiz
+            WHERE quiz.course_id = enrollment.course_id
+              AND quiz.student_id = enrollment.student_id
+              AND quiz.status IN ('submitted', 'expired')
+              AND quiz.passed = true
+          )::int AS "quizzesPassed",
+          (
+            SELECT COALESCE(ROUND(AVG(quiz.score)), 0)
+            FROM "quiz_attempts" AS quiz
+            WHERE quiz.course_id = enrollment.course_id
+              AND quiz.student_id = enrollment.student_id
+              AND quiz.status IN ('submitted', 'expired')
+          )::int AS "averageQuizScore",
+          (
+            SELECT MAX(quiz.score) FROM "quiz_attempts" AS quiz
+            WHERE quiz.course_id = enrollment.course_id
+              AND quiz.student_id = enrollment.student_id
+              AND quiz.status IN ('submitted', 'expired')
+          ) AS "bestQuizScore"
         FROM "enrollments" AS enrollment
         INNER JOIN "users" AS student ON student.id = enrollment.student_id
         LEFT JOIN "course_activity" AS activity
@@ -424,6 +506,11 @@ export class ActivityService {
       exercisesCorrect: Number(row.exercisesCorrect),
       progressPercent: Number(row.progressPercent),
       eventsCount: Number(row.eventsCount),
+      quizzesAttempted: Number(row.quizzesAttempted),
+      quizzesPassed: Number(row.quizzesPassed),
+      averageQuizScore: Number(row.averageQuizScore),
+      bestQuizScore:
+        row.bestQuizScore == null ? null : Number(row.bestQuizScore),
     }))
   }
 
@@ -446,6 +533,9 @@ export class ActivityService {
         exercisesCorrect: number
         studentsCompleted: number
         lastActivityAt: Date | null
+        quizzesAttempted: number
+        quizzesPassed: number
+        averageQuizScore: number
       }[]
     >(
       `
@@ -463,7 +553,24 @@ export class ActivityService {
           COALESCE(SUM(activity.exercises_correct), 0)::int AS "exercisesCorrect",
           (COUNT(*) FILTER (WHERE activity.completed_at IS NOT NULL))::int
             AS "studentsCompleted",
-          MAX(activity.last_opened_at) AS "lastActivityAt"
+          MAX(activity.last_opened_at) AS "lastActivityAt",
+          (
+            SELECT COUNT(*) FROM "quiz_attempts" AS quiz
+            WHERE quiz.course_id = $1
+              AND quiz.status IN ('submitted', 'expired')
+          )::int AS "quizzesAttempted",
+          (
+            SELECT COUNT(*) FROM "quiz_attempts" AS quiz
+            WHERE quiz.course_id = $1
+              AND quiz.status IN ('submitted', 'expired')
+              AND quiz.passed = true
+          )::int AS "quizzesPassed",
+          (
+            SELECT COALESCE(ROUND(AVG(quiz.score)), 0)
+            FROM "quiz_attempts" AS quiz
+            WHERE quiz.course_id = $1
+              AND quiz.status IN ('submitted', 'expired')
+          )::int AS "averageQuizScore"
         FROM "enrollments" AS enrollment
         LEFT JOIN "course_activity" AS activity
           ON activity.user_id = enrollment.student_id
@@ -485,6 +592,9 @@ export class ActivityService {
       exercisesCorrect: Number(row?.exercisesCorrect ?? 0),
       studentsCompleted: Number(row?.studentsCompleted ?? 0),
       lastActivityAt: row?.lastActivityAt ?? null,
+      quizzesAttempted: Number(row?.quizzesAttempted ?? 0),
+      quizzesPassed: Number(row?.quizzesPassed ?? 0),
+      averageQuizScore: Number(row?.averageQuizScore ?? 0),
     }
   }
 
@@ -495,7 +605,7 @@ export class ActivityService {
   ): Promise<CourseActivityBreakdownResponse> {
     await this.assertCourseOwner(courseId, user)
 
-    const [modules, lessons, exercises] = await Promise.all([
+    const [modules, lessons, exercises, quizzes] = await Promise.all([
       this.dataSource.query<
         {
           moduleId: string
@@ -604,6 +714,36 @@ export class ActivityService {
         `,
         [courseId],
       ),
+      this.dataSource.query<
+        {
+          lessonId: string
+          quizTitle: string | null
+          students: number
+          attempts: number
+          averageScore: number
+          passedAttempts: number
+          averageTimeSeconds: number
+        }[]
+      >(
+        `
+          SELECT
+            lesson_id AS "lessonId",
+            MAX(quiz_title) AS "quizTitle",
+            COUNT(DISTINCT student_id)::int AS "students",
+            COUNT(*)::int AS "attempts",
+            COALESCE(ROUND(AVG(score)), 0)::int AS "averageScore",
+            (COUNT(*) FILTER (WHERE passed = true))::int
+              AS "passedAttempts",
+            COALESCE(ROUND(AVG(time_spent_seconds)), 0)::int
+              AS "averageTimeSeconds"
+          FROM "quiz_attempts"
+          WHERE course_id = $1
+            AND status IN ('submitted', 'expired')
+          GROUP BY lesson_id
+          ORDER BY MAX(quiz_title) NULLS LAST, lesson_id
+        `,
+        [courseId],
+      ),
     ])
 
     return {
@@ -611,6 +751,7 @@ export class ActivityService {
       modules: modules.map((item) => this.toModuleBreakdown(item)),
       lessons: lessons.map((item) => this.toLessonBreakdown(item)),
       exercises: exercises.map((item) => this.toExerciseBreakdown(item)),
+      quizzes: quizzes.map((item) => this.toQuizBreakdown(item)),
     }
   }
 
@@ -1296,6 +1437,17 @@ export class ActivityService {
       attempts: Number(item.attempts),
       correctAttempts: Number(item.correctAttempts),
       solvedStudents: Number(item.solvedStudents),
+      averageTimeSeconds: Number(item.averageTimeSeconds),
+    }
+  }
+
+  private toQuizBreakdown(item: QuizBreakdownItem): QuizBreakdownItem {
+    return {
+      ...item,
+      students: Number(item.students),
+      attempts: Number(item.attempts),
+      averageScore: Number(item.averageScore),
+      passedAttempts: Number(item.passedAttempts),
       averageTimeSeconds: Number(item.averageTimeSeconds),
     }
   }

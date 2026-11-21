@@ -13,6 +13,7 @@ import { CoursesModule } from './courses/courses.module'
 import { EnrollmentsModule } from './courses/enrollments/enrollments.module'
 import { MongoModule } from './database/mongo.module'
 import { PostgresModule } from './database/postgres.module'
+import { QuizModule } from './quiz/quiz.module'
 import { UploadsModule } from './uploads/uploads.module'
 
 @Module({
@@ -31,6 +32,7 @@ import { UploadsModule } from './uploads/uploads.module'
     EnrollmentsModule,
     AssessmentsModule,
     ActivityModule,
+    QuizModule,
     UploadsModule,
   ],
   providers: [
