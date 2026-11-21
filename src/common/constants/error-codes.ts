@@ -36,6 +36,7 @@ export const ErrorCodes = {
   InvalidCourseCover: 'invalid_course_cover',
   EnrollmentAlreadyExists: 'enrollment_already_exists',
   EnrollmentNotFound: 'enrollment_not_found',
+  ActivityNotEnrolled: 'activity_not_enrolled',
   AssessmentNotFound: 'assessment_not_found',
   AssessmentNotAvailable: 'assessment_not_available',
   AssessmentInvalidComponent: 'assessment_invalid_component',

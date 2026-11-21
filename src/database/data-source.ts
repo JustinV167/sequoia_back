@@ -6,6 +6,11 @@ import { DataSource } from 'typeorm'
 
 import { Session } from '../auth/sessions/session.entity'
 import { VerificationCode } from '../auth/verification/verification-code.entity'
+import { ActivityEvent } from '../activity/entities/activity-event.entity'
+import { CourseActivity } from '../activity/entities/course-activity.entity'
+import { ExerciseActivity } from '../activity/entities/exercise-activity.entity'
+import { LessonActivity } from '../activity/entities/lesson-activity.entity'
+import { ModuleActivity } from '../activity/entities/module-activity.entity'
 import { Course } from '../courses/course.entity'
 import { CourseTemplate } from '../courses/course-template.entity'
 import { Enrollment } from '../courses/enrollments/enrollment.entity'
@@ -27,7 +32,19 @@ const AppDataSource = new DataSource({
   username: process.env.DB_USER ?? 'sequoia',
   password: process.env.DB_PASSWORD ?? 'sequoia_pass',
   database: process.env.DB_NAME ?? 'sequoia',
-  entities: [User, VerificationCode, Session, Course, CourseTemplate, Enrollment],
+  entities: [
+    User,
+    VerificationCode,
+    Session,
+    Course,
+    CourseTemplate,
+    Enrollment,
+    ActivityEvent,
+    CourseActivity,
+    ModuleActivity,
+    LessonActivity,
+    ExerciseActivity,
+  ],
   migrations: [join(__dirname, 'migrations/*{.ts,.js}')],
   migrationsTableName: 'typeorm_migrations',
   synchronize: false,
